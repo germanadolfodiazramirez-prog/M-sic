@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Germán Music Player">
+<title>Germán Music Player</title>
+<style>
+  :root{--bg:#111316;--panel:#1b1e23;--line:#2c3139;--text:#e9ecef;--dim:#8d96a3;--acc:#ff8a3d;--warn:#ffcf5c}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,sans-serif}
+  h1{max-width:1280px;margin:0 auto;padding:14px 12px 0;font-size:18px;letter-spacing:.04em;color:var(--acc)}
+  .wrap{max-width:1280px;margin:0 auto;padding:12px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px}
+  @media (max-width:820px){.wrap{grid-template-columns:1fr}}
+  h2{font-size:12px;margin:0 0 8px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+  button,input{font:inherit;color:var(--text);background:#252a31;border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:44px}
+  button{cursor:pointer}
+  button:active{background:#323842}
+  button:disabled{opacity:.35}
+  button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  .video{aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden}
+  .video iframe{width:100%;height:100%;display:block;border:0}
+  .now{display:flex;gap:10px;align-items:center;margin-top:10px}
+  .now .title{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .primary{background:var(--acc);border-color:var(--acc);color:#111;font-weight:700}
+  .msg{color:var(--warn);font-size:14px;margin:8px 0 0;min-height:1em}
+  .qitem{display:grid;grid-template-columns:22px 72px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+  .qitem:first-child{border-top:0}
+  .qitem .n{color:var(--dim);font-size:13px;text-align:center}
+  .qitem img{width:72px;height:40px;object-fit:cover;border-radius:4px}
+  .qitem .t{font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .qitem .ops{display:flex;gap:4px}
+  .qitem .ops button{min-width:44px;padding:8px}
+  .qitem.first .t{color:var(--acc);font-weight:600}
+  .empty{color:var(--dim);font-size:14px}
+  .qhead{display:flex;justify-content:space-between;align-items:center}
+  .qhead button{min-height:36px;padding:6px 10px;font-size:13px}
+  .keybar{display:flex;gap:8px}
+  .keybar input{flex:1;min-width:0}
+  details summary{color:var(--dim);font-size:13px;cursor:pointer;padding:4px 0}
+  form.search{display:flex;gap:8px;margin-bottom:8px}
+  form.search input{flex:1;min-width:0}
+  #status{color:var(--dim);font-size:14px;margin:0 0 8px}
+  .res{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .res img{width:120px;height:68px;object-fit:cover;border-radius:6px}
+  .res .t{font-size:14px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .res .c{font-size:13px;color:var(--dim)}
+  .res .btns{grid-column:1/-1;display:flex;gap:6px}
+  .res .btns button{flex:1;padding:8px 4px;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Germán Music Player</h1>
+<div class="wrap">
+  <div>
+    <div class="panel">
+      <div class="video"><div id="player"></div></div>
+      <div class="now">
+        <span class="title" id="nowTitle">Nada cargado</span>
+        <button class="primary" id="nextBtn">Siguiente ⏭</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </div>
+
+    <div class="panel">
+      <div class="qhead"><h2>A continuación</h2><button id="clearQ">Vaciar</button></div>
+      <div id="queue"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Buscar en YouTube</h2>
+      <form class="search" id="searchForm">
+        <input type="search" id="q" placeholder="Canción, artista…" required enterkeyhint="search">
+        <button>Buscar</button>
+      </form>
+      <p id="status" role="status"></p>
+      <div id="results"></div>
+    </div>
+
+    <div class="panel">
+      <details id="keyBox">
+        <summary>Clave de la API de YouTube <span id="keyState"></span></summary>
+        <div class="keybar" style="margin-top:8px">
+          <input type="password" id="key" placeholder="Pega aquí tu clave" autocomplete="off">
+          <button id="saveKey">Guardar</button>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const store = {
+  get(k){ try{ return localStorage.getItem(k) }catch(e){ return null } },
+  set(k,v){ try{ localStorage.setItem(k,v) }catch(e){} }
+};
+const $ = id => document.getElementById(id);
+const decode = h => { const t = document.createElement('textarea'); t.innerHTML = h; return t.value };
+
+/* ---------- Estado ---------- */
+let player = null, ready = false, current = null, queue = [], playCheck = null;
+try{
+  const saved = JSON.parse(store.get('ytQueue') || '[]');
+  if (Array.isArray(saved)) queue = saved.filter(v => v && typeof v.id === 'string' && typeof v.title === 'string');
+}catch(e){ queue = [] }
+const saveQueue = () => store.set('ytQueue', JSON.stringify(queue));
+const setMsg = t => $('msg').textContent = t || '';
+
+/* ---------- Clave ---------- */
+$('key').value = store.get('ytKey') || '';
+function keyUI(){
+  const has = !!$('key').value.trim();
+  $('keyState').textContent = has ? '· guardada' : '· falta';
+  if (!has) $('keyBox').open = true;
+}
+keyUI();
+$('saveKey').onclick = () => {
+  $('key').value = $('key').value.trim();
+  store.set('ytKey', $('key').value);
+  keyUI();
+  if ($('key').value) $('keyBox').open = false;
+};
+
+/* ---------- Reproducción ---------- */
+function play(v, autoplay){
+  if (!ready){ setMsg('El reproductor aún no está listo; intenta de nuevo en un momento.'); return false }
+  current = v; setMsg('');
+  $('nowTitle').textContent = v.title;
+  clearTimeout(playCheck);
+  if (autoplay){
+    player.loadVideoById(v.id);
+    // iPadOS a veces exige un toque para empezar: si no arranca, avisar.
+    playCheck = setTimeout(() => {
+      const s = player.getPlayerState ? player.getPlayerState() : -1;
+      if (current === v && s !== 1 && s !== 3 && !$('msg').textContent)
+        setMsg('Toca ▶ sobre el video para que empiece a sonar.');
+    }, 4000);
+  } else {
+    player.cueVideoById(v.id);
+  }
+  return true;
+}
+function next(){
+  if (!queue.length){ setMsg('No hay más canciones en la lista.'); return false }
+  const v = queue[0];
+  if (!play(v, true)) return false;
+  queue.shift(); saveQueue(); renderQueue();
+  return true;
+}
+$('nextBtn').onclick = next;
+$('clearQ').onclick = () => { queue = []; saveQueue(); renderQueue() };
+
+function addToQueue(v, atFront){
+  if (!current && ready && !queue.length){
+    play(v, false); setMsg('Lista para sonar: toca ▶ sobre el video.'); return;
+  }
+  atFront ? queue.unshift(v) : queue.push(v);
+  saveQueue(); renderQueue();
+}
+
+function renderQueue(){
+  const box = $('queue'); box.textContent = '';
+  if (!queue.length){
+    const e = document.createElement('div'); e.className = 'empty';
+    e.textContent = 'Busca una canción y agrégala para dejarla lista.';
+    box.appendChild(e); return;
+  }
+  queue.forEach((v,i) => {
+    const row = document.createElement('div'); row.className = 'qitem' + (i === 0 ? ' first' : '');
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = i + 1;
+    const img = document.createElement('img'); img.src = v.thumb || ''; img.alt = '';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = v.title;
+    const ops = document.createElement('div'); ops.className = 'ops';
+    const mk = (label, aria, fn, off) => {
+      const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-label', aria);
+      b.disabled = !!off; b.onclick = fn; ops.appendChild(b);
+    };
+    mk('↑', 'Subir', () => { [queue[i-1], queue[i]] = [queue[i], queue[i-1]]; saveQueue(); renderQueue() }, i === 0);
+    mk('↓', 'Bajar', () => { [queue[i+1], queue[i]] = [queue[i], queue[i+1]]; saveQueue(); renderQueue() }, i === queue.length - 1);
+    mk('✕', 'Quitar', () => { queue.splice(i,1); saveQueue(); renderQueue() });
+    row.append(n, img, t, ops); box.appendChild(row);
+  });
+}
+renderQueue();
+
+/* ---------- API del reproductor ---------- */
+const ERR = {
+  2:'Identificador de video no válido.', 5:'Este video no se puede reproducir aquí.',
+  100:'Video no encontrado o privado.', 101:'El propietario no permite reproducirlo fuera de YouTube.',
+  150:'El propietario no permite reproducirlo fuera de YouTube.',
+  153:'YouTube bloqueó la reproducción: la página debe abrirse desde una dirección web (https://…).'
+};
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player('player', {
+    playerVars:{ playsinline:1, rel:0 },
+    events:{
+      onReady: () => {
+        ready = true; setMsg('');
+        // Si quedó una lista guardada, dejar la primera canción cargada.
+        if (!current && queue.length){
+          const v = queue.shift(); saveQueue(); renderQueue();
+          play(v, false); setMsg('Lista para sonar: toca ▶ sobre el video.');
+        }
+      },
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.PLAYING){ clearTimeout(playCheck); setMsg('') }
+        if (e.data === YT.PlayerState.ENDED && queue.length) next();
+      },
+      onError: e => {
+        const failed = current, why = ERR[e.data] || ('Error de reproducción (' + e.data + ').');
+        clearTimeout(playCheck);
+        setMsg(why);
+        if (queue.length && e.data !== 153){
+          setTimeout(() => {
+            // Solo saltar si el usuario no eligió otra canción mientras tanto.
+            if (current === failed && next() && failed) setMsg('Se omitió «' + failed.title + '»: ' + why);
+          }, 2500);
+        }
+      }
+    }
+  });
+}
+setTimeout(() => {
+  if (!ready) setMsg('No se pudo cargar el reproductor de YouTube. Revisa la conexión; si usas Brave, desactiva Shields para esta página y recarga.');
+}, 10000);
+
+/* ---------- Búsqueda ---------- */
+function apiErrorText(err){
+  const reason = (err.errors && err.errors[0] && err.errors[0].reason) || '', m = err.message || '';
+  if (/quota|dailyLimit/i.test(reason)) return 'Se agotó la cuota gratuita de búsquedas de hoy. Vuelve a funcionar mañana.';
+  if (/keyInvalid/i.test(reason) || /API key not valid/i.test(m)) return 'La clave no es válida. Revisa que esté completa y sin espacios.';
+  if (/accessNotConfigured/i.test(reason) || /has not been used|is disabled/i.test(m)) return 'Falta habilitar «YouTube Data API v3» en tu proyecto de Google Cloud.';
+  if (/referer|referrer/i.test(m)) return 'La clave está restringida a otro sitio web. Agrega esta dirección en las restricciones de la clave.';
+  return 'Error en la búsqueda: ' + m.replace(/<[^>]*>/g, '');
+}
+$('searchForm').onsubmit = async e => {
+  e.preventDefault();
+  const key = $('key').value.trim(), q = $('q').value.trim();
+  if (!q) return;
+  if (!key){ $('status').textContent = 'Primero pega y guarda tu clave de la API.'; $('keyBox').open = true; return }
+  $('q').blur();
+  $('status').textContent = 'Buscando…'; $('results').textContent = '';
+  let data;
+  try{
+    const url = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=15'
+      + '&q=' + encodeURIComponent(q) + '&key=' + encodeURIComponent(key);
+    const r = await fetch(url);
+    data = await r.json();
+  }catch(err){
+    $('status').textContent = 'No se pudo conectar con YouTube. Revisa tu conexión a internet.'; return;
+  }
+  if (data.error){ $('status').textContent = apiErrorText(data.error); return }
+  const items = (data.items || []).filter(i => i.id && i.id.videoId && i.snippet);
+  $('status').textContent = items.length ? '' : 'Sin resultados.';
+  items.forEach(i => {
+    const th = i.snippet.thumbnails || {}, pic = th.medium || th.default || {};
+    $('results').appendChild(card({
+      id: i.id.videoId, title: decode(i.snippet.title || ''), channel: decode(i.snippet.channelTitle || ''),
+      thumb: pic.url || ''
+    }));
+  });
+};
+function card(v){
+  const c = document.createElement('div'); c.className = 'res';
+  const img = document.createElement('img'); img.src = v.thumb; img.alt = ''; img.loading = 'lazy';
+  const info = document.createElement('div');
+  const t = document.createElement('div'); t.className = 't'; t.textContent = v.title;
+  const ch = document.createElement('div'); ch.className = 'c'; ch.textContent = v.channel;
+  info.append(t, ch);
+  const btns = document.createElement('div'); btns.className = 'btns';
+  [['Sonar ya', () => play(v, true)],
+   ['Poner siguiente', () => addToQueue(v, true)],
+   ['Al final', () => addToQueue(v, false)]
+  ].forEach(([label, fn]) => {
+    const b = document.createElement('button'); b.textContent = label;
+    b.onclick = () => { fn(); b.textContent = '✓ ' + label; setTimeout(() => b.textContent = label, 1200) };
+    btns.appendChild(b);
+  });
+  c.append(img, info, btns);
+  return c;
+}
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
